@@ -2,13 +2,22 @@ cat <<'EOF' > export_mattermost_channel.sh
 #!/usr/bin/env bash
 set -euo pipefail
 
+# ---- 強制要求環境變數 ----
+if [[ -z "${START_DATE:-}" ]]; then
+  echo "ERROR: START_DATE is not set"
+  exit 1
+fi
+
+if [[ -z "${END_DATE:-}" ]]; then
+  echo "ERROR: END_DATE is not set"
+  exit 1
+fi
+
 # PostgreSQL DSN
 DB_DSN="postgres://mmuser:kIEi71wIHGZMqPqtjQjweGi7rh3O72FBYp9a0qtO@localhost:5432/mattermost?sslmode=disable"
 
-# Mattermost Channel 與日期範圍
+# Mattermost Channel
 CHANNEL_ID="81379rbpyiyrmxojfb56rrxywo"
-START_DATE="2025-12-10"
-END_DATE="2025-12-20"
 
 # 本地資料目錄與暫存匯出目錄
 DATA_DIR="/var/opt/mattermost/data"
@@ -80,4 +89,3 @@ done
 
 echo "Export complete."
 EOF
-
