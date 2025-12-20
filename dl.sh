@@ -6,7 +6,7 @@ set -euo pipefail
 DB_DSN="postgres://mmuser:kIEi71wIHGZMqPqtjQjweGi7rh3O72FBYp9a0qtO@localhost:5432/mattermost?sslmode=disable"
 
 CHANNEL_ID="81379rbpyiyrmxojfb56rrxywo"
-START_DATE="2025-12-10"
+START_DATE="2025-02-11"
 END_DATE="2025-12-20"
 
 DATA_DIR="/var/opt/mattermost/data"
@@ -67,5 +67,3 @@ SQL
 done
 EOF
 
-# 給執行權限
-chmod +x export_mattermost_channel.sh
