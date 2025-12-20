@@ -2,11 +2,8 @@ cat <<'EOF' > export_mattermost_channel.sh
 #!/usr/bin/env bash
 set -euo pipefail
 
-set -a
-source /etc/mattermost/mmomni.mattermost.env
-set +a
-
-DB_DSN="${MM_SQLSETTINGS_DATASOURCE}"
+# 直接寫死 DB 連線
+DB_DSN="postgres://mmuser:kIEi71wIHGZMqPqtjQjweGi7rh3O72FBYp9a0qtO@localhost:5432/mattermost?sslmode=disable"
 
 CHANNEL_ID="81379rbpyiyrmxojfb56rrxywo"
 START_DATE="2025-12-10"
@@ -15,11 +12,9 @@ END_DATE="2025-12-20"
 DATA_DIR="/var/opt/mattermost/data"
 EXPORT_DIR="/tmp/mattermost_export"
 
-# ===== 改成你的 S3 資訊 =====
 S3_BUCKET="lie-cheater"
 S3_REGION="ap-northeast-1"
 S3_BASE_URL="https://${S3_BUCKET}.s3.${S3_REGION}.amazonaws.com/mattermost"
-# ===========================
 
 mkdir -p "$EXPORT_DIR"
 
@@ -71,3 +66,6 @@ SQL
   current="$next"
 done
 EOF
+
+# 給執行權限
+chmod +x export_mattermost_channel.sh
