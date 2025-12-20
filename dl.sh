@@ -1,6 +1,6 @@
 cat <<'EOF' > export_mattermost_channel.sh
 #!/usr/bin/env bash
-set -euo pipefail
+set -u  # 只保留未定義變數檢查
 
 # ---- 強制要求環境變數 ----
 if [[ -z "${START_DATE:-}" ]]; then
@@ -24,7 +24,10 @@ S3_BUCKET="lie-cheater"
 S3_REGION="ap-northeast-1"
 S3_BASE_URL="https://${S3_BUCKET}.s3.${S3_REGION}.amazonaws.com/mattermost"
 
-mkdir -p "$EXPORT_DIR"
+mkdir -p "$EXPORT_DIR" || {
+  echo "ERROR: Failed to create export directory $EXPORT_DIR" >&2
+  exit 1
+}
 
 current="$START_DATE"
 next=$(date -I -d "$current +1 day")
@@ -33,7 +36,7 @@ csv="$EXPORT_DIR/$current.csv"
 echo "Exporting $current ..."
 
 # 匯出當日訊息
-psql "$DB_DSN" <<SQL > "$csv"
+psql "$DB_DSN" <<SQL > "$csv" 2> "$EXPORT_DIR/psql_error.log"
 COPY (
   SELECT
     to_char(to_timestamp(p.createat / 1000) AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Taipei', 'YYYY-MM-DD HH24:MI:SS') AS created_at,
@@ -54,6 +57,12 @@ COPY (
 ) TO STDOUT WITH CSV HEADER;
 SQL
 
+if [[ $? -ne 0 ]]; then
+  echo "ERROR: psql command failed. See $EXPORT_DIR/psql_error.log" >&2
+  cat "$EXPORT_DIR/psql_error.log" >&2
+  exit 1
+fi
+
 # 判斷是否有訊息（只有 header 不上傳）
 line_count=$(wc -l < "$csv")
 if [[ "$line_count" -le 1 ]]; then
@@ -61,18 +70,22 @@ if [[ "$line_count" -le 1 ]]; then
 else
   echo "Uploading CSV $current.csv"
   curl -sSf -X PUT --upload-file "$csv" \
-    "$S3_BASE_URL/csv/$current.csv"
+    "$S3_BASE_URL/csv/$current.csv" || {
+    echo "ERROR: Failed to upload CSV $current.csv" >&2
+    exit 1
+  }
 
   # 處理附件
   tail -n +2 "$csv" | cut -d',' -f4 | sort -u | grep -v '^$' | while read -r fid; do
     find "$DATA_DIR" -type d -name "$fid" | while read -r dir; do
       for file in "$dir"/*; do
         fname=$(basename "$file")
-        # URL encode 檔名
         fname_url=$(python3 -c "import urllib.parse, sys; print(urllib.parse.quote(sys.argv[1]))" "$fname")
         echo "Uploading file $fid/$fname"
         curl -sSf -X PUT --upload-file "$file" \
-          "$S3_BASE_URL/files/$fid/$fname_url"
+          "$S3_BASE_URL/files/$fid/$fname_url" || {
+          echo "ERROR: Failed to upload file $fid/$fname" >&2
+        }
       done
     done
   done
