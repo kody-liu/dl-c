@@ -29,7 +29,7 @@ while [[ "$current" < "$END_DATE" ]]; do
   psql "$DB_DSN" <<SQL > "$csv"
 COPY (
   SELECT
-    to_char(to_timestamp(p.createat / 1000), 'YYYY-MM-DD HH24:MI:SS') AS created_at,
+    to_char(to_timestamp(p.createat / 1000) AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Taipei', 'YYYY-MM-DD HH24:MI:SS') AS created_at,
     u.username,
     replace(p.message, E'\n', ' ') AS message,
     f.id   AS file_id,
