@@ -12,7 +12,7 @@ fi
 # PostgreSQL DSN
 DB_DSN="postgres://mmuser:kIEi71wIHGZMqPqtjQjweGi7rh3O72FBYp9a0qtO@localhost:5432/mattermost?sslmode=disable"
 
-# Mattermost Channel
+# Mattermost Channel ID
 CHANNEL_ID="81379rbpyiyrmxojfb56rrxywo"
 
 # 本地資料目錄與暫存匯出目錄
@@ -29,17 +29,21 @@ mkdir -p "$EXPORT_DIR" || {
   exit 1
 }
 
+# 設定日期範圍 (以台灣時間為準)
 current="$START_DATE"
 next=$(date -I -d "$current +1 day")
 csv="$EXPORT_DIR/$current.csv"
 
-echo "Exporting $current ..."
+echo "Exporting $current (Asia/Taipei Time) ..."
 
 # 匯出當日訊息
+# 關鍵：進入 psql 後立即 SET TIME ZONE，確保 to_timestamp 與過濾條件一致
 psql "$DB_DSN" <<SQL > "$csv" 2> "$EXPORT_DIR/psql_error.log"
+SET TIME ZONE 'Asia/Taipei';
+
 COPY (
   SELECT
-    to_char(to_timestamp(p.createat / 1000) AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Taipei', 'YYYY-MM-DD HH24:MI:SS') AS created_at,
+    to_char(to_timestamp(p.createat / 1000), 'YYYY-MM-DD HH24:MI:SS') AS created_at,
     u.username,
     replace(p.message, E'\n', ' ') AS message,
     f.id   AS file_id,
@@ -51,8 +55,9 @@ COPY (
   LEFT JOIN fileinfo f
     ON f.id = fid.file_id
   WHERE p.channelid = '$CHANNEL_ID'
-    AND to_timestamp(p.createat / 1000) >= TIMESTAMPTZ '$current 00:00:00+00'
-    AND to_timestamp(p.createat / 1000) <  TIMESTAMPTZ '$next 00:00:00+00'
+    -- 這裡的比較會基於上面設定的 Asia/Taipei 時區
+    AND to_timestamp(p.createat / 1000) >= '$current 00:00:00'
+    AND to_timestamp(p.createat / 1000) <  '$next 00:00:00'
   ORDER BY p.createat
 ) TO STDOUT WITH CSV HEADER;
 SQL
@@ -68,7 +73,7 @@ line_count=$(wc -l < "$csv")
 if [[ "$line_count" -le 1 ]]; then
   echo "No messages found for $current, skipping CSV upload."
 else
-  echo "Uploading CSV $current.csv"
+  echo "Uploading CSV $current.csv to S3..."
   curl -sSf -X PUT --upload-file "$csv" \
     "$S3_BASE_URL/csv/$current.csv" || {
     echo "ERROR: Failed to upload CSV $current.csv" >&2
@@ -76,20 +81,25 @@ else
   }
 
   # 處理附件
+  echo "Processing attachments..."
   tail -n +2 "$csv" | cut -d',' -f4 | sort -u | grep -v '^$' | while read -r fid; do
+    # Mattermost 檔案通常存放在 DATA_DIR 下以日期命名的路徑中，這裡用 find 找 ID 匹配的目錄
     find "$DATA_DIR" -type d -name "$fid" | while read -r dir; do
       for file in "$dir"/*; do
-        fname=$(basename "$file")
-        fname_url=$(python3 -c "import urllib.parse, sys; print(urllib.parse.quote(sys.argv[1]))" "$fname")
-        echo "Uploading file $fid/$fname"
-        curl -sSf -X PUT --upload-file "$file" \
-          "$S3_BASE_URL/files/$fid/$fname_url" || {
-          echo "ERROR: Failed to upload file $fid/$fname" >&2
-        }
+        if [[ -f "$file" ]]; then
+          fname=$(basename "$file")
+          # 使用 python3 進行 URL Encode，避免檔名有特殊字元上傳失敗
+          fname_url=$(python3 -c "import urllib.parse, sys; print(urllib.parse.quote(sys.argv[1]))" "$fname")
+          echo "Uploading file $fid/$fname"
+          curl -sSf -X PUT --upload-file "$file" \
+            "$S3_BASE_URL/files/$fid/$fname_url" || {
+            echo "ERROR: Failed to upload file $fid/$fname" >&2
+          }
+        fi
       done
     done
   done
 fi
 
-echo "Export complete."
+echo "Export complete for $current."
 EOF
