@@ -1,0 +1,7 @@
+[profile my-profile]
+sso_start_url = https://d-95677306db.awsapps.com/start 
+sso_region = ap-northeast-1
+region = ap-northeast-1
+output = json
+sso_account_id = 866877698751
+sso_role_name = AWSAdministratorAccess
