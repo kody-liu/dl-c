@@ -1,0 +1,1 @@
+aws s3 sync ./local_dir s3://lie-cheater --region ap-northeast-1 --delete
